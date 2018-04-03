@@ -11,7 +11,7 @@ from tflearn.layers.estimator import regression
 from tqdm import tqdm
 import math
 
-MAX_NB_IMAGES = 100
+MAX_NB_IMAGES = 2000
 DATASET_DIR = 'dataset/PetImages'
 IMG_SIZE = 50
 LR = 1e-3
@@ -29,27 +29,16 @@ if not (os.path.exists('train_data.npy') and os.path.exists('test_data.npy')):
             return np.array([0,1])
         return np.array([0, 0])
 
-    def create_train_data(category, n):
-        training_data = []
-        label = create_label(category)
-    	# read images from id 1 to n
-        for i in tqdm(range(n+1)):
-            path = os.path.join(DATASET_DIR + '/' + category, str(i) + '.jpg')
-            img_data = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
-            img_data = cv2.resize(img_data, (IMG_SIZE, IMG_SIZE))
-            training_data.append([np.array(img_data), label])
-        shuffle(training_data)
-        return training_data
-
-    def create_test_data(category, start, n):
+    def create_data(category, start, n):
         testing_data = []
         label = create_label(category)
     	# read images after the training images
         for i in tqdm(range(start, start+n)):
             path = os.path.join(DATASET_DIR + '/' + category, str(i) + '.jpg')
             img_data = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
-            img_data = cv2.resize(img_data, (IMG_SIZE, IMG_SIZE))
-            testing_data.append([np.array(img_data), label])
+            if img_data is not None:
+                img_data = cv2.resize(img_data, (IMG_SIZE, IMG_SIZE))
+                testing_data.append([np.array(img_data), label])
         shuffle(testing_data)
         return testing_data
 
@@ -72,14 +61,14 @@ if not (os.path.exists('train_data.npy') and os.path.exists('test_data.npy')):
     nb_dogs_test = math.floor(nb_dogs * 0.10)
 
     # create training datasets
-    cats_train_data = create_train_data('Cat', nb_cats_train)
-    dogs_train_data = create_train_data('Dog', nb_dogs_train)
+    cats_train_data = create_data('Cat', 1, nb_cats_train)
+    dogs_train_data = create_data('Dog', 1, nb_dogs_train)
     train_data = cats_train_data + dogs_train_data
     shuffle(train_data)
 
     # create test datasets
-    cats_test_data = create_test_data('Cat', nb_cats_train+1, nb_cats_test)
-    dogs_test_data = create_test_data('Dog', nb_dogs_train+1, nb_dogs_test)
+    cats_test_data = create_data('Cat', nb_cats_train+1, nb_cats_test)
+    dogs_test_data = create_data('Dog', nb_dogs_train+1, nb_dogs_test)
     test_data = cats_test_data + dogs_test_data
     shuffle(test_data)
 
