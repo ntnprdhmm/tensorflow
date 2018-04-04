@@ -11,16 +11,18 @@ from tflearn.layers.estimator import regression
 from tqdm import tqdm
 import math
 
-MAX_NB_IMAGES = 2000
+# 12500 images available per category
+MAX_NB_IMAGES_PER_CATEGORY = 8000
+NB_IMAGES_FOR_VALIDATION = 300
+NB_IMAGES_FOR_TEST = 100
+
 DATASET_DIR = 'dataset/PetImages'
 IMG_SIZE = 50
 LR = 1e-3
 MODEL_NAME = 'dogs-vs-cats-convnet'
 
-train_data = []
-test_data = []
-
-if not (os.path.exists('train_data.npy') and os.path.exists('test_data.npy')):
+if not (os.path.exists('train_data.npy') and os.path.exists('test_data.npy') \
+        and os.path.exists('validation_data.npy')):
     def create_label(category):
         """ Create an one-hot encoded vector from image name """
         if category == 'Cat':
@@ -29,11 +31,11 @@ if not (os.path.exists('train_data.npy') and os.path.exists('test_data.npy')):
             return np.array([0,1])
         return np.array([0, 0])
 
-    def create_data(category, start, n):
+    def create_data(category, n):
         testing_data = []
         label = create_label(category)
     	# read images after the training images
-        for i in tqdm(range(start, start+n)):
+        for i in tqdm(range(1, n+1)):
             path = os.path.join(DATASET_DIR + '/' + category, str(i) + '.jpg')
             img_data = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
             if img_data is not None:
@@ -47,42 +49,37 @@ if not (os.path.exists('train_data.npy') and os.path.exists('test_data.npy')):
     	return len(os.listdir(DATASET_DIR + '/' + category))
 
     # count the number of images available
-    nb_cats = count_images('Cat')
-    nb_dogs = count_images('Dog')
+    nb_cats = min(count_images('Cat'), MAX_NB_IMAGES_PER_CATEGORY)
+    nb_dogs = min(count_images('Dog'), MAX_NB_IMAGES_PER_CATEGORY)
 
-    # don't take too many images (else, it will be too slow)
-    nb_cats = min(nb_cats, MAX_NB_IMAGES)
-    nb_dogs = min(nb_dogs, MAX_NB_IMAGES)
+    # read images
+    cats_data = create_data('Cat', nb_cats)
+    dogs_data = create_data('Dog', nb_dogs)
+    data = cats_data + dogs_data
 
-    # split to train/test
-    nb_cats_train = math.floor(nb_cats * 0.90)
-    nb_cats_test = math.floor(nb_cats * 0.10)
-    nb_dogs_train = math.floor(nb_dogs * 0.90)
-    nb_dogs_test = math.floor(nb_dogs * 0.10)
+    # shuffle images
+    shuffle(data)
 
-    # create training datasets
-    cats_train_data = create_data('Cat', 1, nb_cats_train)
-    dogs_train_data = create_data('Dog', 1, nb_dogs_train)
-    train_data = cats_train_data + dogs_train_data
-    shuffle(train_data)
-
-    # create test datasets
-    cats_test_data = create_data('Cat', nb_cats_train+1, nb_cats_test)
-    dogs_test_data = create_data('Dog', nb_dogs_train+1, nb_dogs_test)
-    test_data = cats_test_data + dogs_test_data
-    shuffle(test_data)
+    # split into train / validation / test subsets
+    train_data = data[:-(NB_IMAGES_FOR_VALIDATION + NB_IMAGES_FOR_TEST)]
+    validation_data = data[-(NB_IMAGES_FOR_VALIDATION + NB_IMAGES_FOR_TEST):-NB_IMAGES_FOR_TEST]
+    test_data = data[-NB_IMAGES_FOR_TEST:]
 
     np.save('train_data.npy', train_data)
+    np.save('validation_data.npy', validation_data)
     np.save('test_data.npy', test_data)
 else:
     train_data = np.load('train_data.npy')
+    validation_data = np.load('validation_data.npy')
     test_data = np.load('test_data.npy')
 
 X_train = np.array([i[0] for i in train_data]).reshape(-1, IMG_SIZE, IMG_SIZE, 1)
 y_train = [i[1] for i in train_data]
 
-X_test = np.array([i[0] for i in test_data]).reshape(-1, IMG_SIZE, IMG_SIZE, 1)
-y_test = [i[1] for i in test_data]
+X_validation = np.array([i[0] for i in validation_data]).reshape(-1, IMG_SIZE, IMG_SIZE, 1)
+y_validation = [i[1] for i in validation_data]
+
+# CREATE NN
 
 tf.reset_default_graph()
 
@@ -109,8 +106,35 @@ convnet = dropout(convnet, 0.8)
 convnet = fully_connected(convnet, 2, activation='softmax')
 convnet = regression(convnet, optimizer='adam', learning_rate=LR, loss='categorical_crossentropy', name='targets')
 
+# TRAIN NN
+
 model = tflearn.DNN(convnet, tensorboard_dir='log', tensorboard_verbose=0)
 
 model.fit({'input': X_train}, {'targets': y_train}, n_epoch=10,
-    validation_set=({'input': X_test}, {'targets': y_test}),
+    validation_set=({'input': X_validation}, {'targets': y_validation}),
     snapshot_step=500, show_metric=True, run_id=MODEL_NAME)
+
+# PREDICT
+#
+fig=plt.figure(figsize=(16, 12))
+
+for num, data in enumerate(test_data[:16]):
+
+    img_num = data[1]
+    img_data = data[0]
+
+    y = fig.add_subplot(4, 4, num+1)
+    orig = img_data
+    data = img_data.reshape(IMG_SIZE, IMG_SIZE, 1)
+    model_out = model.predict([data])[0]
+
+    if np.argmax(model_out) == 1:
+        str_label='Dog'
+    else:
+        str_label='Cat'
+
+    y.imshow(orig, cmap='gray')
+    plt.title(str_label)
+    y.axes.get_xaxis().set_visible(False)
+    y.axes.get_yaxis().set_visible(False)
+plt.show()
