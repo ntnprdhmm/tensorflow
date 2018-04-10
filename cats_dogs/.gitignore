@@ -2,3 +2,6 @@ __pycache__
 dataset/*
 *.npy
 /log
+
+model.tfl*
+checkpoint

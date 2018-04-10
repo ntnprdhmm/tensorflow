@@ -10,9 +10,10 @@ from tflearn.layers.core import input_data, dropout, fully_connected
 from tflearn.layers.estimator import regression
 from tqdm import tqdm
 import math
+import re
 
 # 12500 images available per category
-MAX_NB_IMAGES_PER_CATEGORY = 8000
+MAX_NB_IMAGES_PER_CATEGORY = 800
 NB_IMAGES_FOR_VALIDATION = 300
 NB_IMAGES_FOR_TEST = 100
 
@@ -107,15 +108,24 @@ convnet = fully_connected(convnet, 2, activation='softmax')
 convnet = regression(convnet, optimizer='adam', learning_rate=LR, loss='categorical_crossentropy', name='targets')
 
 # TRAIN NN
-
 model = tflearn.DNN(convnet, tensorboard_dir='log', tensorboard_verbose=0)
 
-model.fit({'input': X_train}, {'targets': y_train}, n_epoch=10,
-    validation_set=({'input': X_validation}, {'targets': y_validation}),
-    snapshot_step=500, show_metric=True, run_id=MODEL_NAME)
+model_already_trained = False
+model_file_pattern = re.compile('^model.tfl')
+for filename in os.listdir():
+    if model_file_pattern.match(filename):
+        model_already_trained = True
+        break
+
+if model_already_trained:
+    model.load('model.tfl')
+else:
+    model.fit({'input': X_train}, {'targets': y_train}, n_epoch=10,
+        validation_set=({'input': X_validation}, {'targets': y_validation}),
+        snapshot_step=500, show_metric=True, run_id=MODEL_NAME)
+    model.save("model.tfl")
 
 # PREDICT
-#
 fig=plt.figure(figsize=(16, 12))
 
 for num, data in enumerate(test_data[:16]):
