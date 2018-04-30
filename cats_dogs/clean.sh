@@ -1,0 +1,7 @@
+rm "./model.tfl.data-00000-of-00001"  
+rm "./model.tfl.meta"
+rm "./model.tfl.index"
+rm "./test_data.npy"  
+rm "./train_data.npy"  
+rm "./validation_data.npy"
+rm "./checkpoint"

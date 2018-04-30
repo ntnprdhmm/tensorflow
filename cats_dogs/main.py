@@ -3,7 +3,6 @@ import numpy as np
 import os
 from random import shuffle
 import tensorflow as tf
-import matplotlib.pyplot as plt
 import tflearn
 from tflearn.layers.conv import conv_2d, max_pool_2d
 from tflearn.layers.core import input_data, dropout, fully_connected
@@ -13,8 +12,8 @@ import math
 import re
 
 # 12500 images available per category
-MAX_NB_IMAGES_PER_CATEGORY = 800
-NB_IMAGES_FOR_VALIDATION = 300
+MAX_NB_IMAGES_PER_CATEGORY = 10000
+NB_IMAGES_FOR_VALIDATION = 500
 NB_IMAGES_FOR_TEST = 100
 
 DATASET_DIR = 'dataset/PetImages'
@@ -22,10 +21,11 @@ IMG_SIZE = 50
 LR = 1e-3
 MODEL_NAME = 'dogs-vs-cats-convnet'
 
+# check if datasets exists
 if not (os.path.exists('train_data.npy') and os.path.exists('test_data.npy') \
         and os.path.exists('validation_data.npy')):
     def create_label(category):
-        """ Create an one-hot encoded vector from image name """
+        """ Create an one-hot encoded vector from category name """
         if category == 'Cat':
             return np.array([1,0])
         elif category == 'Dog':
@@ -33,17 +33,20 @@ if not (os.path.exists('train_data.npy') and os.path.exists('test_data.npy') \
         return np.array([0, 0])
 
     def create_data(category, n):
-        testing_data = []
+	# read n images for the given category
+        data = []
         label = create_label(category)
     	# read images after the training images
         for i in tqdm(range(1, n+1)):
             path = os.path.join(DATASET_DIR + '/' + category, str(i) + '.jpg')
             img_data = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+            # check if the image is valid
             if img_data is not None:
                 img_data = cv2.resize(img_data, (IMG_SIZE, IMG_SIZE))
-                testing_data.append([np.array(img_data), label])
-        shuffle(testing_data)
-        return testing_data
+                # resized image + his label (one hot encoded vector) + original image path
+                data.append([np.array(img_data), label, path])
+        shuffle(data)
+        return data
 
     def count_images(category):
     	""" count the number of images of this category """
@@ -66,10 +69,12 @@ if not (os.path.exists('train_data.npy') and os.path.exists('test_data.npy') \
     validation_data = data[-(NB_IMAGES_FOR_VALIDATION + NB_IMAGES_FOR_TEST):-NB_IMAGES_FOR_TEST]
     test_data = data[-NB_IMAGES_FOR_TEST:]
 
+    # save the datasets
     np.save('train_data.npy', train_data)
     np.save('validation_data.npy', validation_data)
     np.save('test_data.npy', test_data)
 else:
+    # load the datasets
     train_data = np.load('train_data.npy')
     validation_data = np.load('validation_data.npy')
     test_data = np.load('test_data.npy')
@@ -110,6 +115,7 @@ convnet = regression(convnet, optimizer='adam', learning_rate=LR, loss='categori
 # TRAIN NN
 model = tflearn.DNN(convnet, tensorboard_dir='log', tensorboard_verbose=0)
 
+# check if the model has already been trained
 model_already_trained = False
 model_file_pattern = re.compile('^model.tfl')
 for filename in os.listdir():
@@ -117,6 +123,8 @@ for filename in os.listdir():
         model_already_trained = True
         break
 
+# if there is a trained model, load it
+# else, train the model and save it
 if model_already_trained:
     model.load('model.tfl')
 else:
@@ -126,25 +134,21 @@ else:
     model.save("model.tfl")
 
 # PREDICT
-fig=plt.figure(figsize=(16, 12))
+X_test = np.array([i[0] for i in test_data]).reshape(-1, IMG_SIZE, IMG_SIZE, 1)
+y_test = [i[1] for i in test_data]
 
-for num, data in enumerate(test_data[:16]):
+count_good_predictions = 0
+for i in range(len(X_test)):
 
-    img_num = data[1]
-    img_data = data[0]
+    # data[-1][0] == 1 => cat
+    # data[-1][1] == 1 => dog
 
-    y = fig.add_subplot(4, 4, num+1)
-    orig = img_data
-    data = img_data.reshape(IMG_SIZE, IMG_SIZE, 1)
+    data = X_test[i].reshape(IMG_SIZE, IMG_SIZE, 1)
     model_out = model.predict([data])[0]
-
-    if np.argmax(model_out) == 1:
-        str_label='Dog'
+    if np.argmax(model_out) == np.argmax(y_test[i]):
+       	count_good_predictions += 1
     else:
-        str_label='Cat'
+        print("Wrong prediction for %s" % (test_data[i][2]))
+        print("prediction value: %f" % (max(model_out)))
 
-    y.imshow(orig, cmap='gray')
-    plt.title(str_label)
-    y.axes.get_xaxis().set_visible(False)
-    y.axes.get_yaxis().set_visible(False)
-plt.show()
+print("Predictions: %d on %d" % (count_good_predictions, len(X_test)))
